@@ -20,8 +20,14 @@
         </ul>
         <h3>Configuration</h3>
         Configuration options...
+        <ul style="list-style-type:square">
+            <li>IP adress of your SnapServer instance</li>
+            <li>JSON Port of your snapserver instance (1780 on default snapcast installations)</li>
+        </ul>
     </description>
     <params>
+        <param field="Address" label="Snapcast IP Address" width="200px" required="true" default="localhost"/>
+        <param field="Port" label="Snapcast JSON Port" width="40px" required="true" default="1780"/>
     </params>
 </plugin>
 """
@@ -163,11 +169,9 @@ def connect_websocket():
     global ws
     global wst
 
-    ws = websocket.WebSocketApp("ws://192.168.2.22:1780/jsonrpc",
-                              on_message = on_message,
-                              on_error = on_error,
-                              on_close = on_close,
-                              on_open = on_open)
+    url ="ws://"+Parameters["Address"]+":"+str(Parameters["Port"])+"/jsonrpc"
+    Debug("Setting up connection with ["+url+"]")
+    ws = websocket.WebSocketApp(url, on_message = on_message, on_error = on_error, on_close = on_close, on_open = on_open)
 
     Debug("Starting thread")
     wst=Thread(target=ws.run_forever)

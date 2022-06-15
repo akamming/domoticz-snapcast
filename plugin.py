@@ -23,11 +23,18 @@
         <ul style="list-style-type:square">
             <li>IP adress of your SnapServer instance</li>
             <li>JSON Port of your snapserver instance (1780 on default snapcast installations)</li>
+            <li>Debugging enabled yes/no</li>
         </ul>
     </description>
     <params>
         <param field="Address" label="Snapcast IP Address" width="200px" required="true" default="localhost"/>
         <param field="Port" label="Snapcast JSON Port" width="40px" required="true" default="1780"/>
+         <param field="Mode1" label="Debugging" width="50px">
+         <options>
+            <option label="True" value="true"/>
+            <option label="False" value="false" default="true"/>
+         </options>
+         </param>
     </params>
 </plugin>
 """
@@ -39,7 +46,7 @@ import os
 
 StopNow=False
 Connected=False
-Debugging=True
+Debugging=False
 Groups={}
 Clients={}
 ConfigFile="SnapConfig.json"
@@ -167,8 +174,12 @@ def UpdateVolume(UnitID,Command,Level):
     else:
         Debug("Key "+ID+" found")
 
-        if Command=='Set Level': 
+        if Command=='Set Level' or Command=='On': 
             jsoncommand='{"id":"'+ID+'","jsonrpc":"2.0","method":"Client.SetVolume","params":{"id":"'+ID+'","volume":{"muted":false,"percent":'+str(Level)+'}}}'
+            Debug("Sending json command: "+jsoncommand)
+            ws.send(jsoncommand)
+        elif Command=='Off':
+            jsoncommand='{"id":"'+ID+'","jsonrpc":"2.0","method":"Client.SetVolume","params":{"id":"'+ID+'","volume":{"muted":true,"percent":'+str(Level)+'}}}'
             Debug("Sending json command: "+jsoncommand)
             ws.send(jsoncommand)
         else:
@@ -278,11 +289,19 @@ def WriteConfig():
 
 class BasePlugin:
     enabled = False
+    global Debugging
+
     def __init__(self):
         #self.var = 123
         return
 
     def onStart(self):
+        global Debugging
+
+        if Parameters["Mode1"]=="true":
+            Debugging=True
+        else:
+            Debugging=False
         Debug("onStart called")
         ReadConfig()
         heartbeat()

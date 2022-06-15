@@ -6,15 +6,17 @@
 <plugin key="snapcast" name="Snapcast" author="akamming" version="0.0.1" wikilink="http://www.domoticz.com/wiki/plugins/plugin.html" externallink="https://github.com/badaix/snapcast">
     <description>
         <h2>Snapcast plugin</h2><br/>
-        Overview...
+        Domoticz Snapcast integration
         <h3>Features</h3>
         <ul style="list-style-type:square">
-            <li>Feature one...</li>
-            <li>Feature two...</li>
+            <li>Shows the volume of all snapclients as dimmerswitches in Domoticz </li>
+            <li>Controls the volume of snapclients</li>
+            <li>Mute or Unmute the snapclients</li>
         </ul>
         <h3>Devices</h3>
         <ul style="list-style-type:square">
-            <li>Device Type - What it does...</li>
+            <li>Currently only clients supported</li>
+            <li>TBD: Group Volume levels</li>
         </ul>
         <h3>Configuration</h3>
         Configuration options...
@@ -33,6 +35,8 @@ import signal
 StopNow=False
 Connected=False
 Debugging=True
+Groups={}
+Clients={}
 
 def Debug(txt):
     global Debugging
@@ -42,19 +46,101 @@ def Debug(txt):
 def Log(txt):
     Domoticz.Log(txt)
 
+def RequestStatus():
+    ws.send('{"id":1,"jsonrpc":"2.0","method":"Server.GetStatus"}') 
+
+def LowestFreeUnitID(Clients):
+    if len(Clients)>0:
+        Debug("more than 1 client")
+        LowestIDFound=False
+        CurrentID=1
+        while LowestIDFound==False:
+            LowestIDFound=True
+            for key in Clients.keys():
+                if Clients[key]["UnitID"]==CurrentID:
+                    LowestIDFound=False
+            if not LowestIDFound:
+                CurrentID+=1
+        return CurrentID
+    else:
+        Debug("One client")
+        return 1
+
+
+def OnServerUpdate(data):
+    #converts the content of the server tag on the json
+    global Clients
+
+    Debug("ProcessStatus("+json.dumps(data)+")")
+    NewClients={}
+    try:
+        Debug("CLients is ["+json.dumps(Clients)+"]")
+        for group in data["groups"]:
+            Debug("Group ["+group["id"]+"], name = "+group["name"])
+            for client in group["clients"]:
+                Debug ("Client ["+client["id"]+"], name="+client["host"]["name"]+", connected="+str(client["connected"])+", muted="+
+                        str(client["config"]["volume"]["muted"])+", volume="+str(client["config"]["volume"]["percent"]))
+
+                #determine UnitID: either an existing one or the lowest possible
+                if client["id"] in Clients.keys():
+                   UnitID=Clients[client["id"]]["UnitID"]
+                else:
+                   UnitID=0 
+
+                NewClients[client["id"]]= {
+                        "name": client["host"]["name"],
+                        "connected": client["connected"],
+                        "muted": client["config"]["volume"]["muted"],
+                        "percent": client["config"]["volume"]["percent"],
+                        "UnitID": UnitID
+                }
+
+            #assign id's to the zero's
+            for key in NewClients.keys():
+                if NewClients[key]["UnitID"]==0:
+                    NewClients[key]["UnitID"]=LowestFreeUnitID(NewClients)
+                    Debug("Change UnitID of "+key+" to "+str(NewClients[key]["UnitID"]))
+
+
+        Clients=NewClients #copy the new list to the old one
+        
+        Debug("CLients is ["+json.dumps(Clients)+"]")
+
+
+            
+    except Exception as err:
+        Log("ERROR error processing status")
+        Log(err)
+
 def on_message(ws, message):
-    '''
-        This method is invoked when ever the client
-        receives any message from server
-    '''
-    Debug("received message as {}".format(message))
-    data=json.loads(message)
+    try:
+        Debug("received message as {}".format(message))
+        data=json.loads(message)
+        if "method" in data.keys():
+            Debug("We have a method, let's see which one")
+            if data["method"]=="Server.OnUpdate":
+                Debug("Server.OnUpdate")
+                OnServerUpdate(data["params"]["server"])
+            elif data["method"]=="Client.OnConnect" or data["method"]=="Client.OnDisconnect":
+                Debug("repopulate the config by requesting full server status")
+                RequestStatus()
+            else:
+                Debug("unknown method")
+        elif "result" in data.keys():
+            Debug("We only have a result, so probably a status, try to process")
+            OnServerUpdate(data["result"]["server"])
+        else:
+            Debug("Unable to decode message")
+
+    except Exception as err:
+        Log("ERROR decoding message")
+        Log(err)
 
 def on_error(ws, error):
     '''
         This method is invoked when there is an error in connectivity
     '''
-    Log("received error as {}".format(error))
+    Log("ERROR: received error as {}".format(error))
 
 def on_close(ws):
     '''
@@ -71,7 +157,7 @@ def on_open(ws):
 
     Debug("Connection is open")
     Connected=True
-    ws.send('{"id":1,"jsonrpc":"2.0","method":"Server.GetStatus"}')
+    RequestStatus()
 
 def connect_websocket():
     global ws
@@ -95,7 +181,7 @@ def heartbeat():
                 connect_websocket()
         except Exception as err:
             Log("Connect Failed")
-            Log(print(err))
+            Log(err)
     else:
         Debug("still running..")
 

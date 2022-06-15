@@ -35,14 +35,14 @@ import Domoticz
 import websocket
 import json
 from threading import Thread
-import time
-import signal
+import os
 
 StopNow=False
 Connected=False
 Debugging=True
 Groups={}
 Clients={}
+ConfigFile="SnapConfig.json"
 
 def Debug(txt):
     global Debugging
@@ -93,6 +93,7 @@ def OnServerUpdate(data):
     Debug("ProcessStatus("+json.dumps(data)+")")
     NewClients={}
     try:
+        ConfigChanged=False
         Debug("CLients is ["+json.dumps(Clients)+"]")
         for group in data["groups"]:
             Debug("Group ["+group["id"]+"], name = "+group["name"])
@@ -116,8 +117,14 @@ def OnServerUpdate(data):
                 if NewClients[key]["UnitID"]==0:
                     NewClients[key]["UnitID"]=LowestFreeUnitID(NewClients)
                     Debug("Change UnitID of "+key+" to "+str(NewClients[key]["UnitID"]))
+                    ConfigChanged=True
         Clients=NewClients #copy the new list to the old one
         Debug("CLients is ["+json.dumps(Clients)+"]")
+        if ConfigChanged:
+            Debug("Saving Config")
+            WriteConfig()
+        else:
+            Debug("Not saving Config")
         #start updating the switchs
         for key in Clients.keys():
             client=Clients[key]
@@ -240,14 +247,34 @@ def connect_websocket():
 def heartbeat():
     if not Connected:
         try:
-            if not StopNow:
-                Debug("Trying to establish connection..")
-                connect_websocket()
+            Debug("Trying to establish connection..")
+            connect_websocket()
         except Exception as err:
             Log("Connect Failed")
             Log(err)
+
+def ReadConfig():
+    global Clients
+
+    Debug("Trying to read config from file..")
+    if os.path.exists(Parameters["HomeFolder"]+ConfigFile):
+        f = open(Parameters["HomeFolder"]+ConfigFile, "r+")
+        data = json.loads(f.readline())
+        f.close()
+        Clients=data["Clients"]
+        Groups={}
     else:
-        Debug("still running..")
+        Log("ERROR: file "+Parameters["HomeFolder"]+ConfigFile+" does not exist, rebuilding config")
+        Clients={}
+        Groups={}
+
+def WriteConfig():
+    Debug("WriteConfig")
+    Config={}
+    Config["Clients"]=Clients
+    f = open(Parameters["HomeFolder"]+ConfigFile, 'w')
+    f.write(json.dumps(Config))
+    f.close()
 
 class BasePlugin:
     enabled = False
@@ -257,6 +284,7 @@ class BasePlugin:
 
     def onStart(self):
         Debug("onStart called")
+        ReadConfig()
         heartbeat()
 
     def onStop(self):

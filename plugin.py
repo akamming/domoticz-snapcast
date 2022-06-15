@@ -55,6 +55,19 @@ def Log(txt):
 def RequestStatus():
     ws.send('{"id":1,"jsonrpc":"2.0","method":"Server.GetStatus"}') 
 
+def UpdateDimmer(SensorName,UnitID,muted,percent):
+    #Creating devices in case they aren't there...
+    Debug("UpdateDimmer("+SensorName+","+str(UnitID)+","+str(muted)+","+str(percent)+")")
+    numValue=1
+    if (muted):
+        numValue=0
+    if not (UnitID in Devices):
+        Debug("Creating device "+SensorName)
+        Domoticz.Device(Name=SensorName, Unit=UnitID, Type=244,Subtype=62,Switchtype=7,Used=1).Create()
+    Devices[UnitID].Update(nValue=numValue,sValue=str(percent),Type=244,Subtype=62,Switchtype=7,Name=SensorName)
+    Domoticz.Log("Dimmer ("+Devices[UnitID].Name+")")
+
+
 def LowestFreeUnitID(Clients):
     if len(Clients)>0:
         Debug("more than 1 client")
@@ -86,13 +99,11 @@ def OnServerUpdate(data):
             for client in group["clients"]:
                 Debug ("Client ["+client["id"]+"], name="+client["host"]["name"]+", connected="+str(client["connected"])+", muted="+
                         str(client["config"]["volume"]["muted"])+", volume="+str(client["config"]["volume"]["percent"]))
-
                 #determine UnitID: either an existing one or the lowest possible
                 if client["id"] in Clients.keys():
                    UnitID=Clients[client["id"]]["UnitID"]
                 else:
                    UnitID=0 
-
                 NewClients[client["id"]]= {
                         "name": client["host"]["name"],
                         "connected": client["connected"],
@@ -100,20 +111,20 @@ def OnServerUpdate(data):
                         "percent": client["config"]["volume"]["percent"],
                         "UnitID": UnitID
                 }
-
             #assign id's to the zero's
             for key in NewClients.keys():
                 if NewClients[key]["UnitID"]==0:
                     NewClients[key]["UnitID"]=LowestFreeUnitID(NewClients)
                     Debug("Change UnitID of "+key+" to "+str(NewClients[key]["UnitID"]))
-
-
         Clients=NewClients #copy the new list to the old one
-        
         Debug("CLients is ["+json.dumps(Clients)+"]")
-
-
-            
+        #start updating the switchs
+        for key in Clients.keys():
+            client=Clients[key]
+            if client["connected"]:
+                UpdateDimmer(client["name"],client["UnitID"],client["muted"],client["percent"])
+            else:
+                Debug(client["name"]+" is diconnected, ignoring updated")
     except Exception as err:
         Log("ERROR error processing status")
         Log(err)
@@ -125,11 +136,12 @@ def on_message(ws, message):
         if "method" in data.keys():
             Debug("We have a method, let's see which one")
             if data["method"]=="Server.OnUpdate":
-                Debug("Server.OnUpdate")
                 OnServerUpdate(data["params"]["server"])
             elif data["method"]=="Client.OnConnect" or data["method"]=="Client.OnDisconnect":
                 Debug("repopulate the config by requesting full server status")
                 RequestStatus()
+            #elif data["method"]=="Client.OnVolumeChanged":
+            #    OnVolumeChanged(data["params"])
             else:
                 Debug("unknown method")
         elif "result" in data.keys():

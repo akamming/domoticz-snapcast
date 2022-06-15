@@ -140,7 +140,36 @@ def OnVolumeChanged(data):
     else:
         Debug("Client is disconnected, ignoring update")
 
+def OnClientConnectionChange(data):
+    global Clients
+    Clients[data["id"]]["connected"]=data["client"]["connected"]
+    Clients[data["id"]]["percent"]=data["client"]["config"]["volume"]["percent"]
+    Clients[data["id"]]["muted"]=data["client"]["config"]["volume"]["muted"]
+    client=Clients[data["id"]]
+    UpdateDimmer(client["name"],client["UnitID"],client["muted"],client["percent"])
+
+def UpdateVolume(UnitID,Command,Level):
+    Debug("UpdateVolume("+str(UnitID)+","+Command+","+str(Level))
+    #1st: Get snapcastID
+    ID=""
+    for key in Clients.keys():
+        if Clients[key]["UnitID"]==UnitID:
+            ID=key
+    if ID=="":
+        Log("ERROR: Snapcast ID not found")
+    else:
+        Debug("Key "+ID+" found")
+
+        if Command=='Set Level': 
+            jsoncommand='{"id":"'+ID+'","jsonrpc":"2.0","method":"Client.SetVolume","params":{"id":"'+ID+'","volume":{"muted":false,"percent":'+str(Level)+'}}}'
+            Debug("Sending json command: "+jsoncommand)
+            ws.send(jsoncommand)
+        else:
+            Log("ERROR: Unsupported command")
+
+
 def on_message(ws, message):
+    global Clients
     try:
         Debug("received message as {}".format(message))
         data=json.loads(message)
@@ -148,14 +177,24 @@ def on_message(ws, message):
             if data["method"]=="Server.OnUpdate":
                 OnServerUpdate(data["params"]["server"])
             elif data["method"]=="Client.OnConnect" or data["method"]=="Client.OnDisconnect":
-                Debug("repopulate the config by requesting full server status")
-                RequestStatus()
+                OnClientConnectionChange(data["params"])
             elif data["method"]=="Client.OnVolumeChanged":
                 OnVolumeChanged(data["params"])
             else:
                 Debug("unsupported method")
         elif "result" in data.keys():
-            OnServerUpdate(data["result"]["server"])
+            if "server" in data["result"].keys():
+                OnServerUpdate(data["result"]["server"])
+            elif "volume" in data["result"].keys():
+                if data["id"] in Clients.keys():
+                    Clients[data["id"]]["percent"]=data["result"]["volume"]["percent"]
+                    Clients[data["id"]]["muted"]=data["result"]["volume"]["muted"]
+                    client=Clients[data["id"]]
+                    UpdateDimmer(client["name"],client["UnitID"],client["muted"],client["percent"])
+                else:
+                    Log("ERROR: Unknown ID")
+            else:
+                Log("ERROR: Unknow RPC result")
         else:
             Debug("Unable to decode message")
 
@@ -234,6 +273,7 @@ class BasePlugin:
 
     def onCommand(self, Unit, Command, Level, Hue):
         Debug("onCommand called for Unit " + str(Unit) + ": Parameter '" + str(Command) + "', Level: " + str(Level))
+        UpdateVolume(Unit,Command,Level)
 
     def onNotification(self, Name, Subject, Text, Status, Priority, Sound, ImageFile):
         Debug("Notification: " + Name + "," + Subject + "," + Text + "," + Status + "," + str(Priority) + "," + Sound + "," + ImageFile)

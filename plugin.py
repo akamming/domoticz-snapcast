@@ -124,28 +124,37 @@ def OnServerUpdate(data):
             if client["connected"]:
                 UpdateDimmer(client["name"],client["UnitID"],client["muted"],client["percent"])
             else:
-                Debug(client["name"]+" is diconnected, ignoring updated")
+                Debug(client["name"]+" is disconnected, ignoring updated")
     except Exception as err:
         Log("ERROR error processing status")
         Log(err)
+
+def OnVolumeChanged(data):
+    global Clients
+    if Clients[data["id"]]["connected"]:
+        Clients[data["id"]]["percent"]=data["volume"]["percent"]
+        Clients[data["id"]]["muted"]=data["volume"]["muted"]
+        client=Clients[data["id"]]
+        Debug("Updating volume for "+client["name"]+"  with value "+str(client["percent"]))
+        UpdateDimmer(client["name"],client["UnitID"],client["muted"],client["percent"])
+    else:
+        Debug("Client is disconnected, ignoring update")
 
 def on_message(ws, message):
     try:
         Debug("received message as {}".format(message))
         data=json.loads(message)
         if "method" in data.keys():
-            Debug("We have a method, let's see which one")
             if data["method"]=="Server.OnUpdate":
                 OnServerUpdate(data["params"]["server"])
             elif data["method"]=="Client.OnConnect" or data["method"]=="Client.OnDisconnect":
                 Debug("repopulate the config by requesting full server status")
                 RequestStatus()
-            #elif data["method"]=="Client.OnVolumeChanged":
-            #    OnVolumeChanged(data["params"])
+            elif data["method"]=="Client.OnVolumeChanged":
+                OnVolumeChanged(data["params"])
             else:
-                Debug("unknown method")
+                Debug("unsupported method")
         elif "result" in data.keys():
-            Debug("We only have a result, so probably a status, try to process")
             OnServerUpdate(data["result"]["server"])
         else:
             Debug("Unable to decode message")

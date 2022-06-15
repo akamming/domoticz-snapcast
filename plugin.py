@@ -105,7 +105,7 @@ def OnServerUpdate(data):
         for group in data["groups"]:
             Debug("Group ["+group["id"]+"], name = "+group["name"])
             for client in group["clients"]:
-                Debug ("Client ["+client["id"]+"], name="+client["host"]["name"]+", connected="+str(client["connected"])+", muted="+
+                Debug ("Client ["+client["id"]+"], name="+client["config"]["name"]+", connected="+str(client["connected"])+", muted="+
                         str(client["config"]["volume"]["muted"])+", volume="+str(client["config"]["volume"]["percent"]))
                 #determine UnitID: either an existing one or the lowest possible
                 if client["id"] in Clients.keys():
@@ -113,7 +113,7 @@ def OnServerUpdate(data):
                 else:
                    UnitID=0 
                 NewClients[client["id"]]= {
-                        "name": client["host"]["name"],
+                        "name": client["config"]["name"],
                         "connected": client["connected"],
                         "muted": client["config"]["volume"]["muted"],
                         "percent": client["config"]["volume"]["percent"],
@@ -150,6 +150,16 @@ def OnVolumeChanged(data):
         Clients[data["id"]]["muted"]=data["volume"]["muted"]
         client=Clients[data["id"]]
         Debug("Updating volume for "+client["name"]+"  with value "+str(client["percent"]))
+        UpdateDimmer(client["name"],client["UnitID"],client["muted"],client["percent"])
+    else:
+        Debug("Client is disconnected, ignoring update")
+
+def OnNameChanged(data):
+    global Clients
+    if Clients[data["id"]]["connected"]:
+        Clients[data["id"]]["name"]=data["name"]
+        client=Clients[data["id"]]
+        Debug("Updating name for "+client["name"]+"  with value "+str(client["percent"]))
         UpdateDimmer(client["name"],client["UnitID"],client["muted"],client["percent"])
     else:
         Debug("Client is disconnected, ignoring update")
@@ -198,6 +208,8 @@ def on_message(ws, message):
                 OnClientConnectionChange(data["params"])
             elif data["method"]=="Client.OnVolumeChanged":
                 OnVolumeChanged(data["params"])
+            elif data["method"]=="Client.OnNameChanged":
+                OnNameChanged(data["params"])
             else:
                 Debug("unsupported method")
         elif "result" in data.keys():

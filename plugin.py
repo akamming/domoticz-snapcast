@@ -109,7 +109,6 @@ def OnServerUpdate(data):
     NewClients={}
     NewGroups={}
     try:
-        ConfigChanged=False
         Debug("CLients is ["+json.dumps(Clients)+"]")
         for group in data["groups"]:
             Debug("Group ["+group["id"]+"], name = "+group["name"])
@@ -137,13 +136,19 @@ def OnServerUpdate(data):
                 else:
                    UnitID=0  # determine later, we need to now all used id's before we can generate a new one
 
+                #User config name as device name, unless empty then we use the host name
+                Name=client["config"]["name"]
+                if Name=="":
+                    Name=client["host"]["name"]
+
                 #add client to new client dict
                 NewClients[client["id"]]= {
-                        "name": client["config"]["name"],
+                        "name": Name,
                         "connected": client["connected"],
                         "muted": client["config"]["volume"]["muted"],
                         "percent": client["config"]["volume"]["percent"],
-                        "UnitID": UnitID
+                        "UnitID": UnitID,
+                        "GroupID": group["id"]
                 }
 
 
@@ -152,14 +157,12 @@ def OnServerUpdate(data):
             if NewClients[key]["UnitID"]==0:
                 NewClients[key]["UnitID"]=LowestFreeUnitID(NewClients,NewGroups)
                 Debug("Change UnitID of client "+key+" to "+str(NewClients[key]["UnitID"]))
-                ConfigChanged=True
         
         #assign id's to the zero's in groups
         for key in NewGroups.keys():
             if NewGroups[key]["UnitID"]==0:
                 NewGroups[key]["UnitID"]=LowestFreeUnitID(NewClients,NewGroups)
                 Debug("Change UnitID of group "+key+" to "+str(NewGroups[key]["UnitID"]))
-                ConfigChanged=True
 
         #copy the new lists to the old one
         Clients=NewClients 
@@ -167,11 +170,8 @@ def OnServerUpdate(data):
         Debug("Clients is ["+json.dumps(Clients)+"]")
         Debug("Groups is ["+json.dumps(Groups)+"]")
 
-        if ConfigChanged:
-            Debug("Saving Config")
-            WriteConfig()
-        else:
-            Debug("Not saving Config")
+        Debug("Saving Config")
+        WriteConfig()
 
         #start updating the switchs
         for key in Clients.keys():

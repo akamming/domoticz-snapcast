@@ -75,7 +75,6 @@ def UpdateDimmer(SensorName,UnitID,muted,percent):
     Devices[UnitID].Update(nValue=numValue,sValue=str(percent),Type=244,Subtype=62,Switchtype=7,Name=SensorName)
     Domoticz.Log("Dimmer ("+Devices[UnitID].Name+")")
 
-
 def LowestFreeUnitID(Clients,Groups):
     if len(Clients)>0:
         Debug("more than 1 client")
@@ -110,7 +109,6 @@ def UpdateGroupVolume(GroupID):
             sumofclientvolumes+=Clients[key]["percent"]
     #update the dimmer
     UpdateDimmer(Groups[GroupID]["name"],Groups[GroupID]["UnitID"],False,str(sumofclientvolumes/noofclients))
-
 
 def OnServerUpdate(data):
     #converts the content of the server tag on the json
@@ -167,7 +165,6 @@ def OnServerUpdate(data):
                         "GroupID": group["id"]
                 }
 
-
         #assign id's to the zero's in clients
         for key in NewClients.keys():
             if NewClients[key]["UnitID"]==0:
@@ -206,18 +203,6 @@ def OnServerUpdate(data):
         Log(err)
         Domoticz.Log(traceback.format_exc())
 
-
-def OnVolumeChanged(data):
-    global Clients
-    if Clients[data["id"]]["connected"]:
-        Clients[data["id"]]["percent"]=data["volume"]["percent"]
-        Clients[data["id"]]["muted"]=data["volume"]["muted"]
-        client=Clients[data["id"]]
-        Debug("Updating volume for "+client["name"]+"  with value "+str(client["percent"]))
-        UpdateDimmer(client["name"],client["UnitID"],client["muted"],client["percent"])
-    else:
-        Debug("Client is disconnected, ignoring update")
-
 def OnNameChanged(data):
     global Clients
     if Clients[data["id"]]["connected"]:
@@ -237,17 +222,14 @@ def OnClientConnectionChange(data):
     UpdateDimmer(client["name"],client["UnitID"],client["muted"],client["percent"])
 
 def UpdateVolume(UnitID,Command,Level):
-    Debug("UpdateVolume("+str(UnitID)+","+Command+","+str(Level))
+    Debug("UpdateVolume("+str(UnitID)+","+Command+","+str(Level)+")")
     #1st: Get snapcastID
     ID=""
     for key in Clients.keys():
         if Clients[key]["UnitID"]==UnitID:
             ID=key
-    if ID=="":
-        Log("ERROR: Snapcast ID not found")
-    else:
-        Debug("Key "+ID+" found")
-
+    if ID!="": #it was a client
+        Debug("Key "+ID+" found: changing a client volume")
         if Command=='Set Level' or Command=='On': 
             jsoncommand='{"id":"'+ID+'","jsonrpc":"2.0","method":"Client.SetVolume","params":{"id":"'+ID+'","volume":{"muted":false,"percent":'+str(Level)+'}}}'
             Debug("Sending json command: "+jsoncommand)
@@ -258,6 +240,16 @@ def UpdateVolume(UnitID,Command,Level):
             ws.send(jsoncommand)
         else:
             Log("ERROR: Unsupported command")
+    else:
+        for key in Groups.keys():
+            if Groups[key]["UnitID"]==UnitID:
+                ID=key
+        if key=="":
+            Debug("Unknown snapID")
+        else:
+            Debug("Key" +ID+" found: changing the group volume")
+
+
 
 
 def on_message(ws, message):
@@ -285,6 +277,7 @@ def on_message(ws, message):
                     Clients[data["id"]]["muted"]=data["result"]["volume"]["muted"]
                     client=Clients[data["id"]]
                     UpdateDimmer(client["name"],client["UnitID"],client["muted"],client["percent"])
+                    UpdateGroupVolume(client["GroupID"])
                 else:
                     Log("ERROR: Unknown ID")
             else:

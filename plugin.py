@@ -100,6 +100,17 @@ def LowestFreeUnitID(Clients,Groups):
         Domoticz.Log("ERROR: The list is empty")
         return 1
 
+def UpdateGroupVolume(GroupID):
+    #Calculate average group volume
+    noofclients=0
+    sumofclientvolumes=0
+    for key in Clients.keys():
+        if Clients[key]["GroupID"]==GroupID:
+            noofclients+=1
+            sumofclientvolumes+=Clients[key]["percent"]
+    #update the dimmer
+    UpdateDimmer(Groups[GroupID]["name"],Groups[GroupID]["UnitID"],False,str(sumofclientvolumes/noofclients))
+
 
 def OnServerUpdate(data):
     #converts the content of the server tag on the json
@@ -118,10 +129,15 @@ def OnServerUpdate(data):
                UnitID=Groups[group["id"]]["UnitID"]
             else:
                UnitID=0  # determine later, we need to now all used id's before we can generate a new one
+
+            #devicename is ID, unless name is configured in Snap Config
+            Name=group["name"]
+            if Name=="":
+                Name=group["id"]
             
             #add client to new client dict
             NewGroups[group["id"]]= {
-                    "name": group["name"],
+                    "name": Name,
                     "UnitID": UnitID
             }
 
@@ -136,7 +152,7 @@ def OnServerUpdate(data):
                 else:
                    UnitID=0  # determine later, we need to now all used id's before we can generate a new one
 
-                #User config name as device name, unless empty then we use the host name
+                #devicename is hostname, unless name is configured in Snap Config
                 Name=client["config"]["name"]
                 if Name=="":
                     Name=client["host"]["name"]
@@ -173,16 +189,23 @@ def OnServerUpdate(data):
         Debug("Saving Config")
         WriteConfig()
 
-        #start updating the switchs
+        #update the client dimmers
         for key in Clients.keys():
             client=Clients[key]
             if client["connected"]:
                 UpdateDimmer(client["name"],client["UnitID"],client["muted"],client["percent"])
             else:
                 Debug(client["name"]+" is disconnected, ignoring updated")
+
+        #update the group dimmers
+        for key in Groups.keys():
+            UpdateGroupVolume(key)
+
     except Exception as err:
         Log("ERROR error processing status")
         Log(err)
+        Domoticz.Log(traceback.format_exc())
+
 
 def OnVolumeChanged(data):
     global Clients
@@ -272,6 +295,7 @@ def on_message(ws, message):
     except Exception as err:
         Log("ERROR decoding message")
         Log(err)
+        Domoticz.Log(traceback.format_exc())
 
 def on_error(ws, error):
     '''
@@ -316,6 +340,7 @@ def heartbeat():
         except Exception as err:
             Log("Connect Failed")
             Log(err)
+            Domoticz.Log(traceback.format_exc())
 
 def ReadConfig():
     global Clients

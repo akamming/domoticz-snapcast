@@ -248,7 +248,19 @@ def UpdateVolume(UnitID,Command,Level):
             Debug("Unknown snapID")
         else:
             Debug("Key" +ID+" found: changing the group volume")
-
+            #Calculate ratio
+            ratio=float(Level)/float(Devices[UnitID].sValue)
+            Debug ("Updating with ratio "+str(ratio))
+            for key in Clients.keys():
+                if Clients[key]["GroupID"]==ID:
+                    #client is part of the group, so let's update
+                    Volume=(Clients[key]["percent"]*ratio)
+                    if Volume>100:
+                        Volume=100
+                    Muted=Clients[key]["muted"]
+                    jsoncommand='{"id":"'+key+'","jsonrpc":"2.0","method":"Client.SetVolume","params":{"id":"'+key+'","volume":{"muted":'+str(Clients[key]["muted"]).lower()+',"percent":'+str(Volume)+'}}}'
+                    Debug("Sending json command: "+jsoncommand)
+                    ws.send(jsoncommand)
 
 
 

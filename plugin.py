@@ -275,7 +275,11 @@ def on_message(ws, message):
             elif data["method"]=="Client.OnConnect" or data["method"]=="Client.OnDisconnect":
                 OnClientConnectionChange(data["params"])
             elif data["method"]=="Client.OnVolumeChanged":
-                OnVolumeChanged(data["params"])
+                Clients[data["params"]["id"]]["percent"]=data["params"]["volume"]["percent"]
+                Clients[data["params"]["id"]]["muted"]=data["params"]["volume"]["muted"]
+                client=Clients[data["params"]["id"]]
+                UpdateDimmer(client["name"],client["UnitID"],client["muted"],client["percent"])
+                UpdateGroupVolume(client["GroupID"])
             elif data["method"]=="Client.OnNameChanged":
                 OnNameChanged(data["params"])
             else:

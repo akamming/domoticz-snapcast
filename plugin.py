@@ -43,6 +43,7 @@ import websocket
 import json
 from threading import Thread
 import os
+import traceback
 
 StopNow=False
 Connected=False
@@ -75,43 +76,68 @@ def UpdateDimmer(SensorName,UnitID,muted,percent):
     Domoticz.Log("Dimmer ("+Devices[UnitID].Name+")")
 
 
-def LowestFreeUnitID(Clients):
+def LowestFreeUnitID(Clients,Groups):
     if len(Clients)>0:
         Debug("more than 1 client")
         LowestIDFound=False
         CurrentID=1
         while LowestIDFound==False:
-            LowestIDFound=True
+            LowestIDFound=True #set for true, but override if found in either groups or clients
+            #check clients
             for key in Clients.keys():
                 if Clients[key]["UnitID"]==CurrentID:
                     LowestIDFound=False
+
+            #check groups
+            for key in Groups.keys():
+                if Groups[key]["UnitID"]==CurrentID:
+                    LowestIDFound=False
+
             if not LowestIDFound:
                 CurrentID+=1
         return CurrentID
     else:
-        Debug("One client")
+        Domoticz.Log("ERROR: The list is empty")
         return 1
 
 
 def OnServerUpdate(data):
     #converts the content of the server tag on the json
-    global Clients
+    global Clients, Groups
 
     Debug("ProcessStatus("+json.dumps(data)+")")
     NewClients={}
+    NewGroups={}
     try:
         ConfigChanged=False
         Debug("CLients is ["+json.dumps(Clients)+"]")
         for group in data["groups"]:
             Debug("Group ["+group["id"]+"], name = "+group["name"])
+
+            #determine UnitID (if present)
+            if group["id"] in Groups.keys():
+               UnitID=Groups[group["id"]]["UnitID"]
+            else:
+               UnitID=0  # determine later, we need to now all used id's before we can generate a new one
+            
+            #add client to new client dict
+            NewGroups[group["id"]]= {
+                    "name": group["name"],
+                    "UnitID": UnitID
+            }
+
+            # Process clients in group
             for client in group["clients"]:
                 Debug ("Client ["+client["id"]+"], name="+client["config"]["name"]+", connected="+str(client["connected"])+", muted="+
                         str(client["config"]["volume"]["muted"])+", volume="+str(client["config"]["volume"]["percent"]))
-                #determine UnitID: either an existing one or the lowest possible
+                
+                #determine UnitID (if present)
                 if client["id"] in Clients.keys():
                    UnitID=Clients[client["id"]]["UnitID"]
                 else:
-                   UnitID=0 
+                   UnitID=0  # determine later, we need to now all used id's before we can generate a new one
+
+                #add client to new client dict
                 NewClients[client["id"]]= {
                         "name": client["config"]["name"],
                         "connected": client["connected"],
@@ -119,19 +145,34 @@ def OnServerUpdate(data):
                         "percent": client["config"]["volume"]["percent"],
                         "UnitID": UnitID
                 }
-            #assign id's to the zero's
-            for key in NewClients.keys():
-                if NewClients[key]["UnitID"]==0:
-                    NewClients[key]["UnitID"]=LowestFreeUnitID(NewClients)
-                    Debug("Change UnitID of "+key+" to "+str(NewClients[key]["UnitID"]))
-                    ConfigChanged=True
-        Clients=NewClients #copy the new list to the old one
-        Debug("CLients is ["+json.dumps(Clients)+"]")
+
+
+        #assign id's to the zero's in clients
+        for key in NewClients.keys():
+            if NewClients[key]["UnitID"]==0:
+                NewClients[key]["UnitID"]=LowestFreeUnitID(NewClients,NewGroups)
+                Debug("Change UnitID of client "+key+" to "+str(NewClients[key]["UnitID"]))
+                ConfigChanged=True
+        
+        #assign id's to the zero's in groups
+        for key in NewGroups.keys():
+            if NewGroups[key]["UnitID"]==0:
+                NewGroups[key]["UnitID"]=LowestFreeUnitID(NewClients,NewGroups)
+                Debug("Change UnitID of group "+key+" to "+str(NewGroups[key]["UnitID"]))
+                ConfigChanged=True
+
+        #copy the new lists to the old one
+        Clients=NewClients 
+        Groups=NewGroups
+        Debug("Clients is ["+json.dumps(Clients)+"]")
+        Debug("Groups is ["+json.dumps(Groups)+"]")
+
         if ConfigChanged:
             Debug("Saving Config")
             WriteConfig()
         else:
             Debug("Not saving Config")
+
         #start updating the switchs
         for key in Clients.keys():
             client=Clients[key]
@@ -278,16 +319,26 @@ def heartbeat():
 
 def ReadConfig():
     global Clients
+    global Groups
 
-    Debug("Trying to read config from file..")
-    if os.path.exists(Parameters["HomeFolder"]+ConfigFile):
-        f = open(Parameters["HomeFolder"]+ConfigFile, "r+")
-        data = json.loads(f.readline())
-        f.close()
-        Clients=data["Clients"]
-        Groups={}
-    else:
-        Log("ERROR: file "+Parameters["HomeFolder"]+ConfigFile+" does not exist, rebuilding config")
+    try:
+        Debug("Trying to read config from file..")
+        if os.path.exists(Parameters["HomeFolder"]+ConfigFile):
+            f = open(Parameters["HomeFolder"]+ConfigFile, "r+")
+            data = json.loads(f.readline())
+            f.close()
+            Clients=data["Clients"]
+            Groups=data["Groups"]
+            Debug("Succesfully read config")
+        else:
+            Log("ERROR: file "+Parameters["HomeFolder"]+ConfigFile+" does not exist, rebuilding config")
+            Clients={}
+            Groups={}
+    except Exception as err:
+        Domoticz.Log("ERROR: Error reading file "+Parameters["HomeFolder"]+ConfigFile+": , rebuilding config")
+        Domoticz.Log("ERROR: error = "+str(err))
+        Domoticz.Log(traceback.format_exc())
+
         Clients={}
         Groups={}
 
@@ -295,6 +346,7 @@ def WriteConfig():
     Debug("WriteConfig")
     Config={}
     Config["Clients"]=Clients
+    Config["Groups"]=Groups
     f = open(Parameters["HomeFolder"]+ConfigFile, 'w')
     f.write(json.dumps(Config))
     f.close()
@@ -320,9 +372,12 @@ class BasePlugin:
 
     def onStop(self):
         global ws
+        global wst
 
         Debug("onStop called")
         ws.close() #stop the websocketapp
+        wst.join()
+
 
     def onConnect(self, Connection, Status, Description):
         Debug("onConnect called")

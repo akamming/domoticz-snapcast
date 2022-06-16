@@ -65,6 +65,9 @@ def RequestStatus():
 
 def UpdateDimmer(SensorName,UnitID,muted,percent):
     #Creating devices in case they aren't there...
+    if float(percent)<1:
+        percent=1 #prevent division by zero's..
+
     Debug("UpdateDimmer("+SensorName+","+str(UnitID)+","+str(muted)+","+str(percent)+")")
     numValue=1
     if (muted):

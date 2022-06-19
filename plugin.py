@@ -80,7 +80,6 @@ def UpdateDimmer(SensorName,UnitID,muted,percent):
 
 def LowestFreeUnitID(Clients,Groups):
     if len(Clients)>0:
-        Debug("more than 1 client")
         LowestIDFound=False
         CurrentID=1
         while LowestIDFound==False:
@@ -117,14 +116,10 @@ def OnServerUpdate(data):
     #converts the content of the server tag on the json
     global Clients, Groups
 
-    Debug("ProcessStatus("+json.dumps(data)+")")
     NewClients={}
     NewGroups={}
     try:
-        Debug("CLients is ["+json.dumps(Clients)+"]")
         for group in data["groups"]:
-            Debug("Group ["+group["id"]+"], name = "+group["name"])
-
             #determine UnitID (if present)
             if group["id"] in Groups.keys():
                UnitID=Groups[group["id"]]["UnitID"]
@@ -144,9 +139,6 @@ def OnServerUpdate(data):
 
             # Process clients in group
             for client in group["clients"]:
-                Debug ("Client ["+client["id"]+"], name="+client["config"]["name"]+", connected="+str(client["connected"])+", muted="+
-                        str(client["config"]["volume"]["muted"])+", volume="+str(client["config"]["volume"]["percent"]))
-                
                 #determine UnitID (if present)
                 if client["id"] in Clients.keys():
                    UnitID=Clients[client["id"]]["UnitID"]
@@ -172,21 +164,17 @@ def OnServerUpdate(data):
         for key in NewClients.keys():
             if NewClients[key]["UnitID"]==0:
                 NewClients[key]["UnitID"]=LowestFreeUnitID(NewClients,NewGroups)
-                Debug("Change UnitID of client "+key+" to "+str(NewClients[key]["UnitID"]))
         
         #assign id's to the zero's in groups
         for key in NewGroups.keys():
             if NewGroups[key]["UnitID"]==0:
                 NewGroups[key]["UnitID"]=LowestFreeUnitID(NewClients,NewGroups)
-                Debug("Change UnitID of group "+key+" to "+str(NewGroups[key]["UnitID"]))
 
         #copy the new lists to the old one
         Clients=NewClients 
         Groups=NewGroups
-        Debug("Clients is ["+json.dumps(Clients)+"]")
-        Debug("Groups is ["+json.dumps(Groups)+"]")
-
-        Debug("Saving Config")
+        
+        #Save Config
         WriteConfig()
 
         #update the client dimmers
@@ -194,8 +182,6 @@ def OnServerUpdate(data):
             client=Clients[key]
             if client["connected"]:
                 UpdateDimmer(client["name"],client["UnitID"],client["muted"],client["percent"])
-            else:
-                Debug(client["name"]+" is disconnected, ignoring updated")
 
         #update the group dimmers
         for key in Groups.keys():
@@ -211,10 +197,7 @@ def OnNameChanged(data):
     if Clients[data["id"]]["connected"]:
         Clients[data["id"]]["name"]=data["name"]
         client=Clients[data["id"]]
-        Debug("Updating name for "+client["name"]+"  with value "+str(client["percent"]))
         UpdateDimmer(client["name"],client["UnitID"],client["muted"],client["percent"])
-    else:
-        Debug("Client is disconnected, ignoring update")
 
 def OnClientConnectionChange(data):
     global Clients
@@ -225,21 +208,17 @@ def OnClientConnectionChange(data):
     UpdateDimmer(client["name"],client["UnitID"],client["muted"],client["percent"])
 
 def UpdateVolume(UnitID,Command,Level):
-    Debug("UpdateVolume("+str(UnitID)+","+Command+","+str(Level)+")")
     #1st: Get snapcastID
     ID=""
     for key in Clients.keys():
         if Clients[key]["UnitID"]==UnitID:
             ID=key
     if ID!="": #it was a client
-        Debug("Key "+ID+" found: changing a client volume")
         if Command=='Set Level' or Command=='On': 
             jsoncommand='{"id":"'+ID+'","jsonrpc":"2.0","method":"Client.SetVolume","params":{"id":"'+ID+'","volume":{"muted":false,"percent":'+str(Level)+'}}}'
-            Debug("Sending json command: "+jsoncommand)
             ws.send(jsoncommand)
         elif Command=='Off':
             jsoncommand='{"id":"'+ID+'","jsonrpc":"2.0","method":"Client.SetVolume","params":{"id":"'+ID+'","volume":{"muted":true,"percent":'+str(Level)+'}}}'
-            Debug("Sending json command: "+jsoncommand)
             ws.send(jsoncommand)
         else:
             Log("ERROR: Unsupported command")
@@ -247,10 +226,7 @@ def UpdateVolume(UnitID,Command,Level):
         for key in Groups.keys():
             if Groups[key]["UnitID"]==UnitID:
                 ID=key
-        if key=="":
-            Debug("Unknown snapID")
-        else:
-            Debug("Key" +ID+" found: changing the group volume")
+        if key!="":
             #Calculate ratio
             ratio=float(Level)/float(Devices[UnitID].sValue)
             Debug ("Updating with ratio "+str(ratio))
@@ -262,7 +238,6 @@ def UpdateVolume(UnitID,Command,Level):
                         Volume=100
                     Muted=Clients[key]["muted"]
                     jsoncommand='{"id":"'+key+'","jsonrpc":"2.0","method":"Client.SetVolume","params":{"id":"'+key+'","volume":{"muted":'+str(Clients[key]["muted"]).lower()+',"percent":'+str(Volume)+'}}}'
-                    Debug("Sending json command: "+jsoncommand)
                     ws.send(jsoncommand)
 
 
@@ -285,7 +260,6 @@ def on_message(ws, message):
                 UpdateGroupVolume(client["GroupID"])
             elif data["method"]=="Client.OnNameChanged":
                 OnNameChanged(data["params"])
-            else:
                 Debug("unsupported method")
         elif "result" in data.keys():
             if "server" in data["result"].keys():
@@ -302,7 +276,7 @@ def on_message(ws, message):
             else:
                 Log("ERROR: Unknow RPC result")
         else:
-            Debug("Unable to decode message")
+            Log("ERROR: Unable to decode message")
 
     except Exception as err:
         Log("ERROR decoding message")
@@ -322,13 +296,11 @@ def on_close(ws):
     '''
     global Connected
 
-    Debug("Connection closed")
     Connected=False
 
 def on_open(ws):
     global Connected
 
-    Debug("Connection is open")
     Connected=True
     RequestStatus()
 
@@ -337,17 +309,15 @@ def connect_websocket():
     global wst
 
     url ="ws://"+Parameters["Address"]+":"+str(Parameters["Port"])+"/jsonrpc"
-    Debug("Setting up connection with ["+url+"]")
+    Debug("Connecting to ["+url+"]")
     ws = websocket.WebSocketApp(url, on_message = on_message, on_error = on_error, on_close = on_close, on_open = on_open)
 
-    Debug("Starting thread")
     wst=Thread(target=ws.run_forever)
     wst.start()
 
 def heartbeat():
     if not Connected:
         try:
-            Debug("Trying to establish connection..")
             connect_websocket()
         except Exception as err:
             Log("Connect Failed")
@@ -359,14 +329,12 @@ def ReadConfig():
     global Groups
 
     try:
-        Debug("Trying to read config from file..")
         if os.path.exists(Parameters["HomeFolder"]+ConfigFile):
             f = open(Parameters["HomeFolder"]+ConfigFile, "r+")
             data = json.loads(f.readline())
             f.close()
             Clients=data["Clients"]
             Groups=data["Groups"]
-            Debug("Succesfully read config")
         else:
             Log("ERROR: file "+Parameters["HomeFolder"]+ConfigFile+" does not exist, rebuilding config")
             Clients={}
@@ -380,7 +348,6 @@ def ReadConfig():
         Groups={}
 
 def WriteConfig():
-    Debug("WriteConfig")
     Config={}
     Config["Clients"]=Clients
     Config["Groups"]=Groups
@@ -398,20 +365,20 @@ class BasePlugin:
 
     def onStart(self):
         global Debugging
+        Debug("onStart called")
 
         if Parameters["Mode1"]=="true":
             Debugging=True
         else:
             Debugging=False
-        Debug("onStart called")
         ReadConfig()
         heartbeat()
 
     def onStop(self):
         global ws
         global wst
-
         Debug("onStop called")
+
         ws.close() #stop the websocketapp
         wst.join()
 

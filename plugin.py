@@ -60,8 +60,19 @@ def Debug(txt):
 def Log(txt):
     Domoticz.Log(txt)
 
+def SendJsonCommand(jsoncommand):
+    global Connected
+    try:
+        ws.send(jsoncommand)
+    except Exception as err:
+            Log("Sending Jason Command ("+jsoncommand+") failed")
+            Log(err)
+            Domoticz.Log(traceback.format_exc())
+            #Reset conection
+            Connected=False
+
 def RequestStatus():
-    ws.send('{"id":1,"jsonrpc":"2.0","method":"Server.GetStatus"}') 
+    SendJsonCommand('{"id":1,"jsonrpc":"2.0","method":"Server.GetStatus"}') 
 
 def UpdateDimmer(SensorName,UnitID,muted,percent):
     #Creating devices in case they aren't there...
@@ -216,10 +227,10 @@ def UpdateVolume(UnitID,Command,Level):
     if ID!="": #it was a client
         if Command=='Set Level' or Command=='On': 
             jsoncommand='{"id":"'+ID+'","jsonrpc":"2.0","method":"Client.SetVolume","params":{"id":"'+ID+'","volume":{"muted":false,"percent":'+str(Level)+'}}}'
-            ws.send(jsoncommand)
+            SendJsonCommand(jsoncommand)
         elif Command=='Off':
             jsoncommand='{"id":"'+ID+'","jsonrpc":"2.0","method":"Client.SetVolume","params":{"id":"'+ID+'","volume":{"muted":true,"percent":'+str(Level)+'}}}'
-            ws.send(jsoncommand)
+            SendJsonCommand(jsoncommand)
         else:
             Log("ERROR: Unsupported command")
     else:
@@ -238,7 +249,7 @@ def UpdateVolume(UnitID,Command,Level):
                         Volume=100
                     Muted=Clients[key]["muted"]
                     jsoncommand='{"id":"'+key+'","jsonrpc":"2.0","method":"Client.SetVolume","params":{"id":"'+key+'","volume":{"muted":'+str(Clients[key]["muted"]).lower()+',"percent":'+str(Volume)+'}}}'
-                    ws.send(jsoncommand)
+                    SendJsonCommand(jsoncommand)
 
 
 

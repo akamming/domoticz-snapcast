@@ -7,6 +7,7 @@ Creates dimmer switches in domoticz for every snapclient connected to the snapse
 ## Installation steps
 - navigate to your domoticz/plugins dir
 - enter command: sudo -u <domoticz user> git clone https://github.com/akamming/domoticz-snapcast
+- enter command: sudo pip install websocket-client
 - restart domoticz
 - select "snapcast" hardware in your domoticz hardware screen 
 - configure the ip adress and port (on which json interface is available: usually 1780) of your snapcast server

@@ -76,8 +76,8 @@ def RequestStatus():
 
 def UpdateDimmer(SensorName,UnitID,muted,percent):
     #Creating devices in case they aren't there...
-    if float(percent)<1:
-        percent=1 #prevent division by zero's..
+    #if float(percent)<1:
+    #    percent=1 #prevent division by zero's..
 
     Debug("UpdateDimmer("+SensorName+","+str(UnitID)+","+str(muted)+","+str(percent)+")")
     numValue=1
@@ -300,12 +300,17 @@ def on_error(ws, error):
     '''
     Log("ERROR: received error as {}".format(error))
 
-def on_close(ws):
+def on_close(ws, close_status_code, close_msg):
     '''
         This method is invoked when the connection between the
         client and server is closed
     '''
     global Connected
+
+    if close_status_code or close_msg:
+        Debug("on_close args:")
+        Debug("  close status code: " + str(close_status_code))
+        Debug("  close message: " + str(close_msg))
 
     Connected=False
 
